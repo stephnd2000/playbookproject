@@ -1,0 +1,101 @@
+hosts: dev
+  become: yes
+  remote_user: ansible
+  tasks:
+
+    - name: Install Java(OpenJDK)
+      yum:
+        name: java
+        state: latest
+
+    - name: Add group called tomcat
+      group:
+        name: tomcat
+        state: present
+
+    - name: Add tomcat user
+      user:
+        name: tomcat
+        group: tomcat
+        shell: /bin/bash
+
+    - name: download tomcat8
+      get_url:
+        url: https://archive.apache.org/dist/tomcat/tomcat-8/v8.0.32/bin/apache-tomcat-8.0.32.tar.gz
+        dest: /data2
+
+    - name: Uncompress Tomcat8
+      unarchive:
+        src: /data2/apache-tomcat-8.0.32.tar.gz
+        dest: /data2
+        remote_src: yes
+
+    - name: Change file ownership, group and permission
+      file:
+        path: /data2/apache-tomcat-8.0.32
+        owner: tomcat
+        group: tomcat
+        recurse: yes
+        state: directory
+
+    - name: Make tomcat symbolic link
+      file:
+        src: /data2/apache-tomcat-8.0.32
+        dest: /data2/tomcat8
+        owner: tomcat
+        group: tomcat
+        state: link
+
+    - name: Make tomcat.service
+      file:
+        path: /etc/systemd/system/tomcat.service
+        state: touch
+
+    - name: Edit tomcat.service
+      blockinfile:
+        dest: /etc/systemd/system/tomcat.service
+        insertafter:
+        block: |
+          [Unit]
+          Description = Apache Tomcat 8
+          After = syslog.target network.target
+          [Service]
+          User = tomcat
+          Group = tomcat
+          Type = oneshot
+          PIDFile = /data2/apache-tomcat-8.0.32/tomcat.pid
+          RemainAfterExit = yes
+          ExecStart = /data2/apache-tomcat-8.0.32/bin/startup.sh
+          ExecStop = /data2/apache-tomcat-8.0.32/bin/shutdown.sh
+          ExecReStart = /data2/apache-tomcat-8.0.32/bin/shutdown.sh;/opt/apache-tomcat-8.0.32/bin/startup.sh
+          [Install]
+          WantedBy = multi-user.target
+
+    - name: Change permissions of tomcat.service to 0755
+      file:
+        path: /etc/systemd/system/tomcat.service
+        mode: 0755
+
+    - name: Edit tomcat-users.xml file
+      blockinfile:
+        dest: /data2/apache-tomcat-8.0.32/conf/tomcat-users.xml
+        insertafter: -->
+        block: |
+          <role rolename = "admin-gui" />
+          <role rolename = "manager-gui" />
+          <user username = "steiwu" password = "akkissi" roles = "admin-gui, manager-gui" />
+
+    - name: Start tomcat
+      systemd:
+        name: tomcat.service
+        state: started
+        daemon_reload: yes
+        enabled: yes
+    
+    - name: Download Jenkins
+      get_url:
+        url: https://get.jenkins.io/war-stable/2.249.2/jenkins.war
+        dest: /data2/apache-tomcat-8.0.32/webapps
+
+
+
